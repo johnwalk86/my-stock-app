@@ -70,5 +70,16 @@ try:
             p1_d = df['MACD_diff'].iloc[i-1]
             c_d = df['MACD_diff'].iloc[i]
             
-            # 買進：RSI > 50 且 MACD 綠轉紅
-            if c_rsi > 50 and p1_d < 0 and c
+            # 買進：RSI > 50 且 MACD 綠轉紅 (使用括號包覆確保不斷行)
+            cond_buy = (c_rsi > 50) and (p1_d < 0) and (c_d > 0)
+            
+            # 賣出：RSI > 75 或 MACD 紅棒連兩天衰退
+            cond_sell_1 = (c_rsi > 75)
+            cond_sell_2 = (p2_d > p1_d) and (p1_d > c_d) and (c_d > 0)
+            
+            if cond_buy:
+                buy_sig[i] = df['Low'].iloc[i] * 0.96
+            elif cond_sell_1 or cond_sell_2:
+                sell_sig[i] = df['High'].iloc[i] * 1.04
+                
+        df['
