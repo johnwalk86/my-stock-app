@@ -7,7 +7,7 @@ import matplotlib.dates as mdates
 
 # 🚀 網頁基本設定
 st.set_page_config(page_title="AI 智能股票交易分析軟體", layout="wide")
-st.title("📈 AI 智能股票交易分析軟體 (專業K線均線實戰版)")
+st.title("📈 AI 智能股票交易分析軟體 (實戰策略優化版)")
 
 # ----------------- 側邊欄設定 -----------------
 st.sidebar.header("🔧 參數設定")
@@ -59,34 +59,31 @@ try:
         
         macd_obj = ta.trend.MACD(close_series, window_fast=12, window_slow=26, window_sign=9)
         df['MACD_diff'] = macd_obj.macd_diff() 
-        df['MACD_line'] = macd_obj.macd()
         df['5MA_Volume'] = volume_series.rolling(window=5).mean()
         
         # 訊號清單初始化
         buy_signals = [None] * len(df)
         sell_signals = [None] * len(df)
         
-        # 訊號判斷核心邏輯
-        for i in range(1, len(df)):
-            c_price = float(close_series.iloc[i])
-            c_ma20 = float(df['20MA'].iloc[i])
+        # 💡 根據最新交易邏輯進行歷史訊號比對 (i從2開始以利比對前兩天動能)
+        for i in range(2, len(df)):
             c_rsi = float(df['RSI'].iloc[i])
-            p_diff = float(df['MACD_diff'].iloc[i-1])
-            c_diff = float(df['MACD_diff'].iloc[i])
-            c_vol = float(volume_series.iloc[i])
-            c_vol_ma5 = float(df['5MA_Volume'].iloc[i])
             
-            # 安全單行條件判斷，絕不換行報錯
-            cond_buy_1 = (c_price > c_ma20) and (p_diff < 0) and (c_diff > 0)
-            cond_buy_2 = (c_rsi > 50) and (c_vol > c_vol_ma5)
+            p1_diff = float(df['MACD_diff'].iloc[i-1]) # 前一天的MACD柱狀體
+            c_diff = float(df['MACD_diff'].iloc[i])    # 當天的MACD柱狀體
+            p2_diff = float(df['MACD_diff'].iloc[i-2]) # 前兩天的MACD柱狀體
             
-            cond_sell_1 = (p_diff > 0) and (c_diff < 0) and (c_rsi > 60)
-            cond_sell_2 = (c_rsi >= 75)
+            # 🎯 買入邏輯：RSI 在 50 以上 + MACD 綠棒轉紅棒（昨日小於0，今日大於0）
+            cond_buy = (c_rsi > 50) and (p1_diff < 0 and c_diff > 0)
             
-            if cond_buy_1 and cond_buy_2:
-                buy_signals[i] = float(low_series.iloc[i]) * 0.96 
-            elif cond_sell_1 or cond_sell_2:
-                sell_signals[i] = float(high_series.iloc[i]) * 1.04 
+            # 🎯 賣出邏輯：RSI 超過 75 或者是 MACD 紅棒逐漸變少（處於正數紅棒，且連續兩天縮短）
+            cond_sell_rsi = (c_rsi > 75)
+            cond_sell_macd = (p2_diff > p1_diff and p1_diff > c_diff and c_diff > 0)
+            
+            if cond_buy:
+                buy_signals[i] = float(low_series.iloc[i]) * 0.96  # 標在K棒下方
+            elif cond_sell_rsi or cond_sell_macd:
+                sell_signals[i] = float(high_series.iloc[i]) * 1.04 # 標在K棒上方
                 
         df['Buy_Sig'] = buy_signals
         df['Sell_Sig'] = sell_signals
@@ -104,9 +101,9 @@ try:
             st.metric(f"當前 RSI ({rsi_period}M)", f"{latest_rsi:.2f}")
         with col3:
             if buy_signals[-1] is not None:
-                st.success("🔥 策略建議：強勢進攻點（符合買入訊號）")
+                st.success("🔥 策略建議：新一波起漲點（符合買入訊號）")
             elif sell_signals[-1] is not None:
-                st.error("🚨 策略建議：波段結束，果斷減碼/撤退")
+                st.error("🚨 策略建議：動能衰退或超買（符合賣出訊號）")
             else:
                 st.markdown("<div style='background-color:#f0f2f6;padding:10px;border-radius:5px;font-weight:bold;color:black;'>⏳ 策略建議：常態運行，持股待漲或觀望</div>", unsafe_allow_html=True)
 
@@ -130,12 +127,13 @@ try:
             bottom = o if c >= o else c
             ax1.bar(idx, height, bottom=bottom, color=color, width=0.6, alpha=0.9)
             
-        # 均線與訊號標註
+        # 均線群繪製
         ax1.plot(plot_df.index, plot_df['5MA'], label='5MA', color='blue', linewidth=1, alpha=0.7)
         ax1.plot(plot_df.index, plot_df['10MA'], label='10MA', color='purple', linewidth=1, alpha=0.7)
         ax1.plot(plot_df.index, plot_df['20MA'], label='20MA (Month Line)', color='orange', linewidth=2)
         ax1.plot(plot_df.index, plot_df['60MA'], label='60MA (Quarter Line)', color='green', linewidth=1.5, alpha=0.8)
         
+        # 🎯【優化標註】根據最新修改的 RSI 與 MACD 連動策略標記買賣圖標
         ax1.scatter(plot_df.index, plot_df['Buy_Sig'], label='[ Buy Signal ]', color='crimson', marker='^', s=180, zorder=6)
         ax1.scatter(plot_df.index, plot_df['Sell_Sig'], label='[ Sell Signal ]', color='darkgreen', marker='v', s=180, zorder=6)
         
@@ -159,23 +157,4 @@ try:
         
         fig2, ax2 = plt.subplots(figsize=(14, 4))
         
-        diff_vals = plot_df['MACD_diff'].values.flatten()
-        macd_colors = ['red' if float(x) >= 0 else 'green' for x in diff_vals]
-        ax2.bar(plot_df.index, diff_vals, color=macd_colors, alpha=0.4, label='MACD Histogram')
-        ax2.axhline(0, color='gray', linestyle='-', alpha=0.5)
-        ax2.set_ylabel('MACD Diff')
-        ax2.legend(loc='upper left')
-        
-        ax2_rsi = ax2.twinx()
-        ax2_rsi.plot(plot_df.index, plot_df['RSI'], color='purple', linewidth=2, label='RSI Line')
-        ax2_rsi.axhline(50, color='blue', linestyle='--', alpha=0.5, label='Bull/Bear Line (50)')
-        ax2_rsi.axhline(75, color='orange', linestyle=':', alpha=0.6, label='Overbought (75)')
-        ax2_rsi.set_ylabel('RSI Value')
-        ax2_rsi.legend(loc='upper right')
-        
-        ax2.grid(True, alpha=0.3)
-        ax2.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-        st.pyplot(fig2)
-
-except Exception as e:
-    st.error(f"運行出錯，原因：{e}")
+        diff_vals = plot_df['MACD_diff'].values
