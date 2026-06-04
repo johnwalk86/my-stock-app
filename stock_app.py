@@ -133,4 +133,64 @@ try:
             color = 'red' if c >= o else 'green'
             
             # 畫上下影線
-            ax1.vlines(idx, l, h
+            ax1.vlines(idx, l, h, color=color, linewidth=1.5)
+            # 畫K線實體
+            height = c - o if c >= o else o - c
+            bottom = o if c >= o else c
+            ax1.bar(idx, height, bottom=bottom, color=color, width=0.6, alpha=0.9)
+            
+        # 繪製 5 大主要均線
+        ax1.plot(plot_df.index, plot_df['5MA'], label='5MA', color='blue', linewidth=1, alpha=0.7)
+        ax1.plot(plot_df.index, plot_df['10MA'], label='10MA', color='purple', linewidth=1, alpha=0.7)
+        ax1.plot(plot_df.index, plot_df['20MA'], label='20MA (月線)', color='orange', linewidth=2)
+        ax1.plot(plot_df.index, plot_df['60MA'], label='60MA (季線)', color='green', linewidth=1.5, alpha=0.8)
+        if not plot_df['240MA'].isna().all():
+            ax1.plot(plot_df.index, plot_df['240MA'], label='240MA (年線)', color='darkred', linewidth=1.5, alpha=0.8)
+        
+        # 🛠️【已修復】移除無效的 edit_mode 參數，修正畫買賣訊號的 Scatter
+        ax1.scatter(plot_df.index, plot_df['Buy_Sig'], label='🔼 買入訊號', color='crimson', marker='^', s=180, zorder=6)
+        ax1.scatter(plot_df.index, plot_df['Sell_Sig'], label='🔽 賣出訊號', color='darkgreen', marker='v', s=180, zorder=6)
+        
+        ax1.set_title(f"{ticker} Technical Candlestick Chart", fontsize=14)
+        ax1.legend(loc='upper left', prop={'size': 10})
+        ax1.grid(True, alpha=0.3)
+        
+        # 下方連動：成交量
+        vol_colors = ['red' if float(close_series.loc[idx]) >= float(open_series.loc[idx]) else 'green' for idx in plot_df.index]
+        ax1_sub.bar(plot_df.index, volume_series.tail(show_days).values.flatten(), color=vol_colors, alpha=0.7)
+        ax1_sub.set_ylabel('Volume')
+        ax1_sub.grid(True, alpha=0.3)
+        
+        ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        
+        st.pyplot(fig1)
+        st.markdown("---")
+        
+        # ----------------- 📊 第二張圖表：MACD純柱狀體融合RSI -----------------
+        st.subheader("📈 指標融合空間：MACD 純柱狀體 + RSI 多頭分界線")
+        
+        fig2, ax2 = plt.subplots(figsize=(14, 4))
+        
+        # 1. 畫 MACD 純柱狀體 (左邊 Y 軸)
+        diff_vals = plot_df['MACD_diff'].values.flatten()
+        macd_colors = ['red' if float(x) >= 0 else 'green' for x in diff_vals]
+        ax2.bar(plot_df.index, diff_vals, color=macd_colors, alpha=0.4, label='MACD Histogram (左軸)')
+        ax2.axhline(0, color='gray', linestyle='-', alpha=0.5)
+        ax2.set_ylabel('MACD Diff')
+        ax2.legend(loc='upper left')
+        
+        # 2. 融合 RSI 到同張圖 (右邊 Y 軸)
+        ax2_rsi = ax2.twinx()
+        ax2_rsi.plot(plot_df.index, plot_df['RSI'], color='purple', linewidth=2, label='RSI (右軸)')
+        ax2_rsi.axhline(50, color='blue', linestyle='--', alpha=0.5, label='多空分界 (50)')
+        ax2_rsi.axhline(75, color='orange', linestyle=':', alpha=0.6, label='超買警戒 (75)')
+        ax2_rsi.set_ylabel('RSI Value')
+        ax2_rsi.legend(loc='upper right')
+        
+        ax2.grid(True, alpha=0.3)
+        ax2.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        
+        st.pyplot(fig2)
+
+except Exception as e:
+    st.error(f"運行出錯，原因：{e}")
