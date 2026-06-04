@@ -9,10 +9,23 @@ st.set_page_config(page_title="AI 智能股票交易分析軟體", layout="wide"
 st.title("📈 棟未條 AI智能股票交易分析軟體")
 st.subheader("設定您的自選股與交易策略，讓系統自動分析買賣點！")
 
-# ----------------- 側邊欄設定 -----------------
-st.sidebar.header("🔧 參數設定")
-stock_code = st.sidebar.text_input("輸入股票代碼 (台股請加 .TW)", value="2330.TW")
+# 1. 提供常見的結尾後綴讓使用者快速選擇
+suffix = st.selectbox(
+    "1. 請先選擇股票類型（市場）：",
+    ["上市 (.TW)", "上櫃/興櫃 (.TWO)"]
+)
 
+# 根據選擇決定後綴字
+tail = ".TW" if "上市" in suffix else ".TWO"
+
+# 2. 讓使用者輸入數字代碼即可
+number = st.text_input("2. 請輸入股票數字代碼（例如：2330 或 2646）：", "2330")
+
+# 3. 自動組合成完整的代碼
+ticker = f"{number}{tail}"
+
+# 在畫面上提示目前組合出來的完整代碼
+st.info(f" 目前準備查詢的完整代碼為：{ticker}")
 # 日期選擇
 start_date = st.sidebar.date_input("開始日期", value=pd.to_datetime("2026-01-01"))
 end_date = st.sidebar.date_input("結束日期", value=pd.to_datetime("2026-06-01"))
