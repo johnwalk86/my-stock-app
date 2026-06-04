@@ -39,49 +39,58 @@ try:
     if df.empty:
         st.error("❌ 找不到該股票數據，請檢查代碼是否正確。")
     else:
+        # 🔥【關鍵修正核心】將 Yahoo Finance 的多維結構壓平成一維
+        close_series = df['Close'].squeeze()
+        volume_series = df['Volume'].squeeze()
+        
         # ----------------- 技術指標計算 -----------------
         # 1. 20MA 均線
-        df['20MA'] = df['Close'].rolling(window=20).mean()
+        df['20MA'] = close_series.rolling(window=20).mean()
         
         # 2. RSI (14)
-        df['RSI'] = ta.momentum.rsi(df['Close'], window=rsi_period)
+        df['RSI'] = ta.momentum.rsi(close_series, window=rsi_period)
         
         # 3. MACD (12, 26, 9)
-        macd_obj = ta.trend.MACD(df['Close'], window_fast=12, window_slow=26, window_sign=9)
+        macd_obj = ta.trend.MACD(close_series, window_fast=12, window_slow=26, window_sign=9)
         df['MACD_line'] = macd_obj.macd()
         df['MACD_signal'] = macd_obj.macd_signal()
         df['MACD_diff'] = macd_obj.macd_diff() # 柱狀體
         
         # 4. 成交量與 5日均量
-        df['5MA_Volume'] = df['Volume'].rolling(window=5).mean()
+        df['5MA_Volume'] = volume_series.rolling(window=5).mean()
         
         # 取得最新一天的數據進行策略比對
         latest = df.iloc[-1]
         prev = df.iloc[-2]
         
-        current_price = float(latest['Close'])
-        prev_price = float(prev['Close'])
+        current_price = float(close_series.iloc[-1])
+        prev_price = float(close_series.iloc[-2])
         price_change = current_price - prev_price
         
-        # ----------------- 實戰策略邏輯判定 -----------------
+        latest_rsi = float(latest['RSI'])
+        latest_macd_line = float(latest['MACD_line'])
+        latest_ma20 = float(latest['20MA'])
+        latest_vol = float(volume_series.iloc[-1])
+        latest_vol_ma5 = float(df['5MA_Volume'].iloc[-1])
+        
         # 買入條件檢查
         c_macd_gold = (prev['MACD_diff'] < 0 and latest['MACD_diff'] > 0) # MACD金叉
-        c_macd_below_0 = (latest['MACD_line'] < 0) # 0軸下方
-        c_rsi_above_50 = (latest['RSI'] > 50) # RSI > 50
-        c_above_20ma = (current_price > float(latest['20MA'])) # 站上20MA
-        c_vol_boom = (float(latest['Volume']) > float(latest['5MA_Volume'])) # 量能大於5日均量
+        c_macd_below_0 = (latest_macd_line < 0) # 0軸下方
+        c_rsi_above_50 = (latest_rsi > 50) # RSI > 50
+        c_above_20ma = (current_price > latest_ma20) # 站上20MA
+        c_vol_boom = (latest_vol > latest_vol_ma5) # 量能大於5日均量
         
         # 賣出條件檢查
-        c_rsi_overbought = (latest['RSI'] >= 75) # RSI進入超買區
+        c_rsi_overbought = (latest_rsi >= 75) # RSI進入超買區
         c_macd_dead = (prev['MACD_diff'] > 0 and latest['MACD_diff'] < 0) # MACD高位死叉
-        c_rsi_drop_60 = (latest['RSI'] < 60)
+        c_rsi_drop_60 = (latest_rsi < 60)
         
         # ----------------- 頂部數據看板 -----------------
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("當前股價", f"${current_price:.2f}", f"{price_change:+.2f}")
         with col2:
-            st.metric("當前 RSI (14)", f"{latest['RSI']:.2f}")
+            st.metric("當前 RSI ({})".format(rsi_period), f"{latest_rsi:.2f}")
         with col3:
             # 綜合策略推演
             if c_above_20ma and c_macd_gold and c_rsi_above_50:
@@ -93,7 +102,7 @@ try:
             elif c_rsi_overbought:
                 st.warning("⚠️ 策略建議：極度超買，請勿追高隨時撤退")
             else:
-                st.light("⏳ 策略建議：常態運行，持股待漲或觀望")
+                st.markdown("<div style='background-color:#f0f2f6;padding:10px;border-radius:5px;font-weight:bold;color:black;'>⏳ 策略建議：常態運行，持股待漲或觀望</div>", unsafe_allow_html=True)
 
         st.markdown("---")
         
@@ -140,14 +149,14 @@ try:
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [2, 1, 1]})
         
         # 主圖：股價 + 20MA
-        ax1.plot(df.index[-120:], df['Close'][-120:], label='Close Price', color='dimgray', alpha=0.8)
-        ax1.plot(df.index[-120:], df['20MA'][-120:], label='20MA (Month Line)', color='orange', linewidth=2)
+        ax1.plot(df.index[-120:], close_series.iloc[-120:], label='Close Price', color='dimgray', alpha=0.8)
+        ax1.plot(df.index[-120:], df['20MA'].iloc[-120:], label='20MA (Month Line)', color='orange', linewidth=2)
         ax1.set_title(f"{ticker} Real-time Analysis (Last 120 Days)", fontsize=14)
         ax1.legend(loc='upper left')
         ax1.grid(True, alpha=0.3)
         
         # 副圖一：RSI + 50分界線 + 75超買線
-        ax2.plot(df.index[-120:], df['RSI'][-120:], color='purple', label='RSI (14)')
+        ax2.plot(df.index[-120:], df['RSI'].iloc[-120:], color='purple', label='RSI ({})'.format(rsi_period))
         ax2.axhline(50, color='blue', linestyle='--', alpha=0.5, label='Bull/Bear (50)')
         ax2.axhline(75, color='red', linestyle=':', alpha=0.6, label='Overbought (75)')
         ax2.set_ylabel('RSI')
@@ -155,11 +164,11 @@ try:
         ax2.grid(True, alpha=0.3)
         
         # 副圖二：MACD 柱狀體與快慢線
-        ax3.plot(df.index[-120:], df['MACD_line'][-120:], color='black', label='MACD')
-        ax3.plot(df.index[-120:], df['MACD_signal'][-120:], color='blue', linestyle='--', label='Signal')
+        ax3.plot(df.index[-120:], df['MACD_line'].iloc[-120:], color='black', label='MACD')
+        ax3.plot(df.index[-120:], df['MACD_signal'].iloc[-120:], color='blue', linestyle='--', label='Signal')
         # 柱狀體翻紅翻綠
-        colors = ['red' if x >= 0 else 'green' for x in df['MACD_diff'][-120:]]
-        ax3.bar(df.index[-120:], df['MACD_diff'][-120:], color=colors, label='Histogram', alpha=0.6)
+        colors = ['red' if x >= 0 else 'green' for x in df['MACD_diff'].iloc[-120:]]
+        ax3.bar(df.index[-120:], df['MACD_diff'].iloc[-120:], color=colors, label='Histogram', alpha=0.6)
         ax3.axhline(0, color='gray', linestyle='-', alpha=0.5)
         ax3.set_ylabel('MACD')
         ax3.legend(loc='upper left')
