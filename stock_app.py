@@ -4,6 +4,8 @@ import pandas as pd
 import ta
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import requests
+import re
 
 # 🚀 網頁基本設定
 st.set_page_config(page_title="AI 智能股票分析", layout="wide")
@@ -19,7 +21,7 @@ ticker = f"{number}{tail}"
 show_days = {"1個月": 22, "3個月": 66, "6個月": 132}[st.sidebar.radio("📅 顯示區間", ["1個月", "3個月", "6個月"], index=1)]
 rsi_p = st.sidebar.slider("RSI 天數", 9, 14, 14)
 
-# 🔍 抓取股票名稱 (改用內建資料庫，避開 Yahoo 擋外國 IP)
+# 🔍 抓取股票名稱
 @st.cache_data
 def get_stock_name(full_ticker):
     try:
@@ -34,20 +36,17 @@ def load_data(t):
     return yf.download(t, period="1y")
 
 try:
-    # 抓取名稱與歷史數據
     stock_name = get_stock_name(ticker)
     raw_df = load_data(ticker)
     
     if raw_df.empty: 
         st.error("❌ 找不到數據，請確認代碼。")
     else:
-        # 🔥 防禦：強制解除 yfinance 雙層欄位
         if isinstance(raw_df.columns, pd.MultiIndex):
             raw_df.columns = raw_df.columns.droplevel(1)
             
         df = raw_df[['Open', 'High', 'Low', 'Close', 'Volume']].dropna().copy()
         
-        # 指標計算
         df['5MA'] = df['Close'].rolling(5).mean()
         df['10MA'] = df['Close'].rolling(10).mean()
         df['20MA'] = df['Close'].rolling(20).mean()
@@ -58,17 +57,13 @@ try:
         
         buy_sig, sell_sig = [None]*len(df), [None]*len(df)
         
-        # 🎯 買賣邏輯判斷
         for i in range(2, len(df)):
             c_rsi = df['RSI'].iloc[i]
             p2_d = df['MACD_diff'].iloc[i-2]
             p1_d = df['MACD_diff'].iloc[i-1]
             c_d = df['MACD_diff'].iloc[i]
             
-            # 買進：RSI > 50 且 MACD 綠轉紅
             cond_buy = (c_rsi > 50) and (p1_d < 0) and (c_d > 0)
-            
-            # 賣出：RSI > 75 或 MACD 紅棒連兩天衰退
             cond_sell_1 = (c_rsi > 75)
             cond_sell_2 = (p2_d > p1_d) and (p1_d > c_d) and (c_d > 0)
             
@@ -79,21 +74,42 @@ try:
                 
         df['Buy'], df['Sell'] = buy_sig, sell_sig
         
-        # ----------------- 頂部看板 -----------------
         cur_p = df['Close'].iloc[-1]
         chg = cur_p - df['Close'].iloc[-2]
         
-        # 完美顯示股票名稱
         st.markdown(f"### 📌 {stock_name} ({ticker}) 即時戰況")
         
+        # ----------------- 頂部看板 (第一排：技術與策略) -----------------
         c1, c2, c3 = st.columns(3)
-        c1.metric("當前股價", f"${cur_p:.2f}", f"{chg:+.2f}")
+        # 🔥 修改點 1：加入 delta_color="inverse"，讓台股呈現「紅漲綠跌」
+        c1.metric("當前股價", f"${cur_p:.2f}", f"{chg:+.2f}", delta_color="inverse")
         c2.metric("當前 RSI", f"{df['RSI'].iloc[-1]:.2f}")
         with c3:
-            if buy_sig[-1]: st.success("🔥 策略：新起漲點 (買進)")
-            elif sell_sig[-1]: st.error("🚨 策略：動能衰退/超買 (賣出)")
-            else: st.info("⏳ 策略：常態觀望")
+            last_rsi = df['RSI'].iloc[-1]
+            last_cd = df['MACD_diff'].iloc[-1]
+            last_p1d = df['MACD_diff'].iloc[-2]
+            last_p2d = df['MACD_diff'].iloc[-3]
             
+            if last_rsi > 50 and last_p1d < 0 and last_cd > 0:
+                st.success("🔥 策略：MACD翻紅起漲 (買進)")
+            elif last_rsi > 75:
+                st.error("🚨 策略：RSI 極度超買 (賣出)")
+            elif last_p2d > last_p1d and last_p1d > last_cd and last_cd > 0:
+                st.warning("⚠️ 策略：MACD 動能衰退 (減碼)")
+            else:
+                st.info("⏳ 策略：常態觀望")
+        
+        st.markdown("---")
+        
+        # ----------------- 頂部看板 (第二排：籌碼面 UI 框架) -----------------
+        st.markdown("#### 🏢 三大法人籌碼動向")
+        f1, f2, f3 = st.columns(3)
+        # 🔥 修改點 2：建立簡單明瞭的三大法人 UI 框架
+        f1.metric("外資今日買賣超", "需串接本土 API", "連買/賣 X 天", delta_color="off")
+        f2.metric("投信今日買賣超", "需串接本土 API", "連買/賣 X 天", delta_color="off")
+        f3.metric("自營商今日買賣超", "需串接本土 API", "連買/賣 X 天", delta_color="off")
+        
+        st.caption("💡 說明：系統目前使用國際 `yfinance` 資料庫，無台股專屬籌碼數據。此為 UI 預留框架，未來串接台灣券商 API 即可直接亮燈顯示。")
         st.markdown("---")
         
         # ----------------- 📊 圖表 1：K線與標註 -----------------
