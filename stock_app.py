@@ -39,7 +39,7 @@ try:
     if df.empty:
         st.error("❌ 找不到該股票數據，請檢查代碼是否正確。")
     else:
-        # 🔥【這是關鍵】把 Yahoo Finance 雙層二維結構壓平成一維串流，避免維度報錯！
+        # 🔥 把 Yahoo Finance 雙層二維結構壓平成一維串流
         close_series = df['Close'].squeeze()
         volume_series = df['Volume'].squeeze()
         
@@ -92,7 +92,7 @@ try:
         with col2:
             st.metric("當前 RSI ({})".format(rsi_period), f"{latest_rsi:.2f}")
         with col3:
-            # 綜合策略推推演
+            # 💡【已修正】這裡原本打錯成 c_rsi_above_5，現已補上 0 修正為 c_rsi_above_50
             if c_above_20ma and c_macd_gold and c_rsi_above_50:
                 st.success("🔥 策略建議：強勢進攻點（符合最強買入訊號）")
             elif c_macd_gold and c_macd_below_0:
