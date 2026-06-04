@@ -44,7 +44,6 @@ def get_institutional_data(stock_id):
             latest_date = df_chip['date'].max()
             today_df = df_chip[df_chip['date'] == latest_date]
             
-            # 🔥 修正：FinMind 的後台欄位其實是英文！
             def get_net_buy(keyword):
                 target = today_df[today_df['name'].str.contains(keyword, na=False, case=False)]
                 if target.empty: return 0
@@ -110,7 +109,6 @@ try:
         
         st.markdown(f"### 📌 {stock_name} ({ticker}) 即時戰況")
         
-        # ----------------- 頂部看板 (第一排：技術與策略) -----------------
         c1, c2, c3 = st.columns(3)
         c1.metric("當前股價", f"${cur_p:.2f}", f"{chg:+.2f}", delta_color="inverse")
         c2.metric("當前 RSI", f"{df['RSI'].iloc[-1]:.2f}")
@@ -131,7 +129,6 @@ try:
         
         st.markdown("---")
         
-        # ----------------- 頂部看板 (第二排：籌碼面) -----------------
         st.markdown("#### 🏢 三大法人最新籌碼動向 (單位：張)")
         f1, f2, f3 = st.columns(3)
         
@@ -147,7 +144,6 @@ try:
             
         st.markdown("---")
         
-        # ----------------- 📊 圖表 1：K線與標註 -----------------
         st.subheader("📊 區間實戰歷史：K 線、均線與訊號標註")
         plot_df = df.tail(show_days)
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
@@ -179,5 +175,22 @@ try:
         
         st.markdown("---")
         
-        # ----------------- 📊 圖表 2：MACD + RSI -----------------
-        st.subheader("📈 指標融合：MACD
+        st.subheader("📈 指標融合：MACD 柱狀體 + RSI")
+        fig3, ax3 = plt.subplots(figsize=(14, 3.5))
+        
+        macd_c = ['red' if x >= 0 else 'green' for x in plot_df['MACD_diff']]
+        ax3.bar(plot_df.index, plot_df['MACD_diff'], color=macd_c, alpha=0.4, label='MACD')
+        ax3.axhline(0, color='gray', alpha=0.5)
+        ax3.legend(loc='upper left')
+        
+        ax4 = ax3.twinx()
+        ax4.plot(plot_df.index, plot_df['RSI'], color='purple', linewidth=2, label='RSI')
+        ax4.axhline(50, color='blue', linestyle='--', alpha=0.5)
+        ax4.axhline(75, color='orange', linestyle=':')
+        ax4.legend(loc='upper right')
+        ax3.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        
+        st.pyplot(fig3)
+        
+except Exception as e:
+    st.error(f"錯誤：{e}")
