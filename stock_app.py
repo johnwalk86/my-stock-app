@@ -52,7 +52,7 @@ try:
         high_series = pd.Series(df['High'].values.flatten(), index=df.index)
         low_series = pd.Series(df['Low'].values.flatten(), index=df.index)
         
-        # ----------------- 技術指標與 4 大均線計算 (已移除年線) -----------------
+        # ----------------- 技術指標與 4 大均線計算 -----------------
         df['5MA'] = close_series.rolling(window=5).mean()
         df['10MA'] = close_series.rolling(window=10).mean()
         df['20MA'] = close_series.rolling(window=20).mean()      # 月線
@@ -61,7 +61,7 @@ try:
         df['RSI'] = ta.momentum.rsi(close_series, window=rsi_period)
         
         macd_obj = ta.trend.MACD(close_series, window_fast=12, window_slow=26, window_sign=9)
-        df['MACD_diff'] = macd_obj.macd_diff() # MACD 柱狀體數值
+        df['MACD_diff'] = macd_obj.macd_diff() 
         df['MACD_line'] = macd_obj.macd()
         
         df['5MA_Volume'] = volume_series.rolling(window=5).mean()
@@ -80,17 +80,17 @@ try:
             c_vol = float(volume_series.iloc[i])
             c_vol_ma5 = float(df['5MA_Volume'].iloc[i])
             
-            # 買入交易邏輯：股價在20MA之上 + MACD金叉 + RSI > 50 + 當天成交量 > 5日均量
+            # 買入：股價在20MA之上 + MACD金叉 + RSI > 50 + 當天成交量 > 5日均量
             if c_price > c_ma20 and p_diff < 0 and c_diff > 0 and c_rsi > 50 and c_vol > c_vol_ma5:
                 buy_signals[i] = float(low_series.iloc[i]) * 0.96 
-            # 賣出交易邏輯：MACD高位死叉(RSI>60時死叉) 或 RSI進入75以上極度超買區
+            # 賣出：MACD高位死叉(RSI>60時死叉) 或 RSI進入75以上極度超買區
             elif (p_diff > 0 and c_diff < 0 and c_rsi > 60) or (c_rsi >= 75):
                 sell_signals[i] = float(high_series.iloc[i]) * 1.04 
                 
         df['Buy_Sig'] = buy_signals
         df['Sell_Sig'] = sell_signals
 
-        # 取得最新一天的狀況作文字看板顯示
+        # 取得最新一天的狀況
         current_price = float(close_series.iloc[-1])
         prev_price = float(close_series.iloc[-2])
         price_change = current_price - prev_price
@@ -115,37 +115,4 @@ try:
         # ----------------- 📊 第一張圖表：專業K線、均線與買賣標註 -----------------
         st.subheader(f"📊 區間實戰歷史：專業 K 線、均線群與買賣訊號圖標 ({time_frame})")
         
-        # 篩選要顯示的區間數據
-        plot_df = df.tail(show_days)
-        
-        fig1, (ax1, ax1_sub) = plt.subplots(2, 1, figsize=(14, 8), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
-        
-        # 手動繪製標準K線棒
-        for idx, row in plot_df.iterrows():
-            o = float(open_series.loc[idx])
-            c = float(close_series.loc[idx])
-            h = float(high_series.loc[idx])
-            l = float(low_series.loc[idx])
-            color = 'red' if c >= o else 'green'
-            ax1.vlines(idx, l, h, color=color, linewidth=1.5)
-            height = c - o if c >= o else o - c
-            bottom = o if c >= o else c
-            ax1.bar(idx, height, bottom=bottom, color=color, width=0.6, alpha=0.9)
-            
-        # 繪製 4 大主要均線
-        ax1.plot(plot_df.index, plot_df['5MA'], label='5MA', color='blue', linewidth=1, alpha=0.7)
-        ax1.plot(plot_df.index, plot_df['10MA'], label='10MA', color='purple', linewidth=1, alpha=0.7)
-        ax1.plot(plot_df.index, plot_df['20MA'], label='20MA (Month Line)', color='orange', linewidth=2)
-        ax1.plot(plot_df.index, plot_df['60MA'], label='60MA (Quarter Line)', color='green', linewidth=1.5, alpha=0.8)
-        
-        # 🛠️ 將圖表內標籤改為純英文與經典圖標，完美消滅豆腐塊
-        ax1.scatter(plot_df.index, plot_df['Buy_Sig'], label='[ Buy Signal ]', color='crimson', marker='^', s=180, zorder=6)
-        ax1.scatter(plot_df.index, plot_df['Sell_Sig'], label='[ Sell Signal ]', color='darkgreen', marker='v', s=180, zorder=6)
-        
-        ax1.set_title(f"{ticker} Technical Candlestick Chart", fontsize=14)
-        ax1.legend(loc='upper left', prop={'size': 10})
-        ax1.grid(True, alpha=0.3)
-        
-        # 下方連動：成交量
-        vol_colors = ['red' if float(close_series.loc[idx]) >= float(open_series.loc[idx]) else 'green' for idx in plot_df.index]
-        ax1_sub.bar(plot_df.index, volume_series.tail(show_days).values.flatten(), color=vol
+        plot_df = df.tail(show_days
