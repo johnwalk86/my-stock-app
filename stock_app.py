@@ -54,7 +54,7 @@ def get_institutional_data(stock_id):
                 'date': latest_date,
                 '外資': get_net_buy('Foreign_Investor'),
                 '投信': get_net_buy('Investment_Trust'),
-                '自營商': get_net_buy('Dealer') # 包含 Dealer_self 與 Dealer_Hedging
+                '自營商': get_net_buy('Dealer')
             }
     except:
         pass
@@ -96,4 +96,88 @@ try:
             
             cond_buy = (c_rsi > 50) and (p1_d < 0) and (c_d > 0)
             cond_sell_1 = (c_rsi > 75)
-            cond_sell_2 = (p2_d > p1_d)
+            cond_sell_2 = (p2_d > p1_d) and (p1_d > c_d) and (c_d > 0)
+            
+            if cond_buy:
+                buy_sig[i] = df['Low'].iloc[i] * 0.96
+            elif cond_sell_1 or cond_sell_2:
+                sell_sig[i] = df['High'].iloc[i] * 1.04
+                
+        df['Buy'], df['Sell'] = buy_sig, sell_sig
+        
+        cur_p = df['Close'].iloc[-1]
+        chg = cur_p - df['Close'].iloc[-2]
+        
+        st.markdown(f"### 📌 {stock_name} ({ticker}) 即時戰況")
+        
+        # ----------------- 頂部看板 (第一排：技術與策略) -----------------
+        c1, c2, c3 = st.columns(3)
+        c1.metric("當前股價", f"${cur_p:.2f}", f"{chg:+.2f}", delta_color="inverse")
+        c2.metric("當前 RSI", f"{df['RSI'].iloc[-1]:.2f}")
+        with c3:
+            last_rsi = df['RSI'].iloc[-1]
+            last_cd = df['MACD_diff'].iloc[-1]
+            last_p1d = df['MACD_diff'].iloc[-2]
+            last_p2d = df['MACD_diff'].iloc[-3]
+            
+            if last_rsi > 50 and last_p1d < 0 and last_cd > 0:
+                st.success("🔥 策略：MACD翻紅起漲 (買進)")
+            elif last_rsi > 75:
+                st.error("🚨 策略：RSI 極度超買 (賣出)")
+            elif last_p2d > last_p1d and last_p1d > last_cd and last_cd > 0:
+                st.warning("⚠️ 策略：MACD 動能衰退 (減碼)")
+            else:
+                st.info("⏳ 策略：常態觀望")
+        
+        st.markdown("---")
+        
+        # ----------------- 頂部看板 (第二排：籌碼面) -----------------
+        st.markdown("#### 🏢 三大法人最新籌碼動向 (單位：張)")
+        f1, f2, f3 = st.columns(3)
+        
+        if chip_data:
+            chip_date = chip_data['date']
+            f_val, t_val, d_val = int(chip_data['外資']), int(chip_data['投信']), int(chip_data['自營商'])
+            
+            f1.metric(f"外資買賣超", f"更新: {chip_date}", f"{f_val:,} 張", delta_color="inverse")
+            f2.metric(f"投信買賣超", f"更新: {chip_date}", f"{t_val:,} 張", delta_color="inverse")
+            f3.metric(f"自營商買賣超", f"更新: {chip_date}", f"{d_val:,} 張", delta_color="inverse")
+        else:
+            st.warning("⏳ 籌碼 API 讀取中，請稍後重新整理。")
+            
+        st.markdown("---")
+        
+        # ----------------- 📊 圖表 1：K線與標註 -----------------
+        st.subheader("📊 區間實戰歷史：K 線、均線與訊號標註")
+        plot_df = df.tail(show_days)
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
+        
+        for idx, r in plot_df.iterrows():
+            o, c, h, l = r['Open'], r['Close'], r['High'], r['Low']
+            color = 'red' if c >= o else 'green'
+            ax1.vlines(idx, l, h, color=color, linewidth=1.5)
+            ax1.bar(idx, abs(c-o), bottom=min(o,c), color=color, width=0.6, alpha=0.9)
+            
+        ax1.plot(plot_df.index, plot_df['5MA'], label='5MA', color='blue', alpha=0.5)
+        ax1.plot(plot_df.index, plot_df['10MA'], label='10MA', color='purple', alpha=0.5)
+        ax1.plot(plot_df.index, plot_df['20MA'], label='20MA', color='orange', linewidth=2)
+        ax1.plot(plot_df.index, plot_df['60MA'], label='60MA', color='green', alpha=0.5)
+        
+        ax1.scatter(plot_df.index, plot_df['Buy'], color='crimson', marker='^', s=150, zorder=5, label='Buy')
+        ax1.scatter(plot_df.index, plot_df['Sell'], color='darkgreen', marker='v', s=150, zorder=5, label='Sell')
+        
+        ax1.set_title(f"[{ticker}] Technical Chart", fontsize=14)
+        ax1.legend(loc='upper left')
+        ax1.grid(True, alpha=0.3)
+        
+        vol_color = ['red' if r['Close'] >= r['Open'] else 'green' for _, r in plot_df.iterrows()]
+        ax2.bar(plot_df.index, plot_df['Volume'], color=vol_color, alpha=0.6)
+        ax2.set_ylabel('Volume')
+        ax2.grid(True, alpha=0.3)
+        ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        st.pyplot(fig)
+        
+        st.markdown("---")
+        
+        # ----------------- 📊 圖表 2：MACD + RSI -----------------
+        st.subheader("📈 指標融合：MACD
