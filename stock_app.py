@@ -6,10 +6,11 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import requests
 import re
+import datetime
 
 # 🚀 網頁基本設定
 st.set_page_config(page_title="AI 智能股票分析", layout="wide")
-st.title("📈 AI 智能股票交易分析軟體 (實戰策略版)")
+st.title("📈 AI 智能股票交易分析軟體 (技術籌碼雙效版)")
 
 # ----------------- 側邊欄設定 -----------------
 st.sidebar.header("🔧 參數設定")
@@ -30,6 +31,36 @@ def get_stock_name(full_ticker):
     except:
         return "指定個股"
 
+# 🔍 抓取三大法人籌碼 (使用 FinMind 免費 API)
+@st.cache_data(ttl=3600)
+def get_institutional_data(stock_id):
+    try:
+        # 抓取近 10 天確保能拿到最新交易日的資料
+        start_date = (datetime.datetime.now() - datetime.timedelta(days=10)).strftime("%Y-%m-%d")
+        url = f"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id={stock_id}&start_date={start_date}"
+        res = requests.get(url, timeout=5).json()
+        
+        if res.get('msg') == 'success' and res.get('data'):
+            df_chip = pd.DataFrame(res['data'])
+            latest_date = df_chip['date'].max()
+            today_df = df_chip[df_chip['date'] == latest_date]
+            
+            # FinMind 單位是「股」，換算成「張」(/1000)
+            def get_net_buy(keyword):
+                target = today_df[today_df['name'].str.contains(keyword, na=False)]
+                if target.empty: return 0
+                return (target['buy'].sum() - target['sell'].sum()) / 1000
+                
+            return {
+                'date': latest_date,
+                '外資': get_net_buy('外資'),
+                '投信': get_net_buy('投信'),
+                '自營商': get_net_buy('自營商')
+            }
+    except:
+        pass
+    return None
+
 # 🔍 數據抓取
 @st.cache_data
 def load_data(t): 
@@ -38,6 +69,7 @@ def load_data(t):
 try:
     stock_name = get_stock_name(ticker)
     raw_df = load_data(ticker)
+    chip_data = get_institutional_data(number) # 抓取籌碼
     
     if raw_df.empty: 
         st.error("❌ 找不到數據，請確認代碼。")
@@ -81,7 +113,6 @@ try:
         
         # ----------------- 頂部看板 (第一排：技術與策略) -----------------
         c1, c2, c3 = st.columns(3)
-        # 🔥 修改點 1：加入 delta_color="inverse"，讓台股呈現「紅漲綠跌」
         c1.metric("當前股價", f"${cur_p:.2f}", f"{chg:+.2f}", delta_color="inverse")
         c2.metric("當前 RSI", f"{df['RSI'].iloc[-1]:.2f}")
         with c3:
@@ -101,15 +132,25 @@ try:
         
         st.markdown("---")
         
-        # ----------------- 頂部看板 (第二排：籌碼面 UI 框架) -----------------
-        st.markdown("#### 🏢 三大法人籌碼動向")
+        # ----------------- 頂部看板 (第二排：籌碼面) -----------------
+        st.markdown("#### 🏢 三大法人最新籌碼動向 (單位：張)")
         f1, f2, f3 = st.columns(3)
-        # 🔥 修改點 2：建立簡單明瞭的三大法人 UI 框架
-        f1.metric("外資今日買賣超", "需串接本土 API", "連買/賣 X 天", delta_color="off")
-        f2.metric("投信今日買賣超", "需串接本土 API", "連買/賣 X 天", delta_color="off")
-        f3.metric("自營商今日買賣超", "需串接本土 API", "連買/賣 X 天", delta_color="off")
         
-        st.caption("💡 說明：系統目前使用國際 `yfinance` 資料庫，無台股專屬籌碼數據。此為 UI 預留框架，未來串接台灣券商 API 即可直接亮燈顯示。")
+        if chip_data:
+            chip_date = chip_data['date']
+            # 將數值轉為整數
+            f_val, t_val, d_val = int(chip_data['外資']), int(chip_data['投信']), int(chip_data['自營商'])
+            
+            # 判斷顏色符號
+            def format_chip(val):
+                return f"+{val:,}" if val > 0 else f"{val:,}"
+
+            f1.metric(f"外資買賣超 ({chip_date})", f"{format_chip(f_val)}", delta_color="inverse")
+            f2.metric(f"投信買賣超 ({chip_date})", f"{format_chip(t_val)}", delta_color="inverse")
+            f3.metric(f"自營商買賣超 ({chip_date})", f"{format_chip(d_val)}", delta_color="inverse")
+        else:
+            st.warning("⏳ 籌碼 API 讀取中或達免費上限，請稍後重試。")
+            
         st.markdown("---")
         
         # ----------------- 📊 圖表 1：K線與標註 -----------------
