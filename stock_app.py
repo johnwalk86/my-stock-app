@@ -46,7 +46,7 @@ try:
     if df.empty:
         st.error("❌ 找不到該股票數據，請檢查代碼是否正確。")
     else:
-        # 🔥【徹底解決格式核心】打散壓平底層數據
+        # 🔥 打散壓平底層數據
         close_series = pd.Series(df['Close'].values.flatten(), index=df.index)
         volume_series = pd.Series(df['Volume'].values.flatten(), index=df.index)
         open_series = pd.Series(df['Open'].values.flatten(), index=df.index)
@@ -66,4 +66,71 @@ try:
         df['MACD_diff'] = macd_obj.macd_diff() # MACD 柱狀體數值
         df['MACD_line'] = macd_obj.macd()
         
-        df['5MA_Volume'] = volume
+        # 🛠️【已修復】補回漏掉的完整的 5日均量計算語法
+        df['5MA_Volume'] = volume_series.rolling(window=5).mean()
+        
+        # 💡 建立歷史所有天數的訊號標註串列
+        buy_signals = [None] * len(df)
+        sell_signals = [None] * len(df)
+        
+        for i in range(1, len(df)):
+            p_price = float(close_series.iloc[i-1])
+            c_price = float(close_series.iloc[i])
+            c_ma20 = float(df['20MA'].iloc[i])
+            c_rsi = float(df['RSI'].iloc[i])
+            p_diff = float(df['MACD_diff'].iloc[i-1])
+            c_diff = float(df['MACD_diff'].iloc[i])
+            c_vol = float(volume_series.iloc[i])
+            c_vol_ma5 = float(df['5MA_Volume'].iloc[i])
+            
+            # 買入交易邏輯：股價在20MA之上 + MACD金叉 + RSI > 50 + 當天成交量 > 5日均量
+            if c_price > c_ma20 and p_diff < 0 and c_diff > 0 and c_rsi > 50 and c_vol > c_vol_ma5:
+                buy_signals[i] = float(low_series.iloc[i]) * 0.96 # 標註在 K 棒下影線下方
+            # 賣出交易邏輯：MACD高位死叉(RSI>60時死叉) 或 RSI進入75以上極度超買區
+            elif (p_diff > 0 and c_diff < 0 and c_rsi > 60) or (c_rsi >= 75):
+                sell_signals[i] = float(high_series.iloc[i]) * 1.04 # 標註在 K 棒上影線上方
+                
+        df['Buy_Sig'] = buy_signals
+        df['Sell_Sig'] = sell_signals
+
+        # 取得最新一天的狀況作文字看板顯示
+        current_price = float(close_series.iloc[-1])
+        prev_price = float(close_series.iloc[-2])
+        price_change = current_price - prev_price
+        latest_rsi = float(df['RSI'].iloc[-1])
+        
+        # ----------------- 頂部數據看板 -----------------
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("當前股價", f"${current_price:.2f}", f"{price_change:+.2f}")
+        with col2:
+            st.metric(f"當前 RSI ({rsi_period}M)", f"{latest_rsi:.2f}")
+        with col3:
+            if buy_signals[-1] is not None:
+                st.success("🔥 策略建議：強勢進攻點（符合買入訊號）")
+            elif sell_signals[-1] is not None:
+                st.error("🚨 策略建議：波段結束，果斷減碼/撤退")
+            else:
+                st.markdown("<div style='background-color:#f0f2f6;padding:10px;border-radius:5px;font-weight:bold;color:black;'>⏳ 策略建議：常態運行，持股待漲或觀望</div>", unsafe_allow_html=True)
+
+        st.markdown("---")
+        
+        # ----------------- 📊 第一張圖表：專業K線、5大均線與買賣標註 -----------------
+        st.subheader(f"📊 區間實戰歷史：專業 K 線、五大均線群與買賣訊號圖標 ({time_frame})")
+        
+        # 篩選要顯示的區間數據
+        plot_df = df.tail(show_days)
+        
+        fig1, (ax1, ax1_sub) = plt.subplots(2, 1, figsize=(14, 8), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
+        
+        # 手動繪製標準K線棒
+        for idx, row in plot_df.iterrows():
+            o = float(open_series.loc[idx])
+            c = float(close_series.loc[idx])
+            h = float(high_series.loc[idx])
+            l = float(low_series.loc[idx])
+            
+            color = 'red' if c >= o else 'green'
+            
+            # 畫上下影線
+            ax1.vlines(idx, l, h
