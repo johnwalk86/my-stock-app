@@ -29,7 +29,6 @@ st.sidebar.info("MACD 預設全球共識參數: (12, 26, 9)\n均線預設生命�
 # 🔍 數據抓取
 @st.cache_data
 def load_data(stock_code):
-    # 抓取過去兩年的數據以確保均線與量能計算準確
     data = yf.download(stock_code, period="2y")
     return data
 
@@ -39,9 +38,9 @@ try:
     if df.empty:
         st.error("❌ 找不到該股票數據，請檢查代碼是否正確。")
     else:
-        # 🔥 把 Yahoo Finance 雙層二維結構壓平成一維串流
-        close_series = df['Close'].squeeze()
-        volume_series = df['Volume'].squeeze()
+        # 🔥【徹底解決格式核心】不管 yfinance 是什麼二維或三維結構，一律轉成最純粹的 1D Series 數值
+        close_series = pd.Series(df['Close'].values.flatten(), index=df.index)
+        volume_series = pd.Series(df['Volume'].values.flatten(), index=df.index)
         
         # ----------------- 技術指標計算 -----------------
         # 1. 20MA 均線
@@ -59,22 +58,23 @@ try:
         # 4. 成交量與 5日均量
         df['5MA_Volume'] = volume_series.rolling(window=5).mean()
         
-        # 取得最新一天的數據進行策略比對
-        latest = df.iloc[-1]
-        prev = df.iloc[-2]
-        
+        # 💡【終極降維法】直接用位置型索引，避開 Series 轉換 float 的名稱衝突
         current_price = float(close_series.iloc[-1])
         prev_price = float(close_series.iloc[-2])
         price_change = current_price - prev_price
         
-        latest_rsi = float(latest['RSI'])
-        latest_macd_line = float(latest['MACD_line'])
-        latest_ma20 = float(latest['20MA'])
+        latest_rsi = float(df['RSI'].iloc[-1])
+        latest_macd_line = float(df['MACD_line'].iloc[-1])
+        latest_ma20 = float(df['20MA'].iloc[-1])
         latest_vol = float(volume_series.iloc[-1])
         latest_vol_ma5 = float(df['5MA_Volume'].iloc[-1])
         
+        # 前一天的數據做黃金/死亡交叉判定
+        prev_macd_diff = float(df['MACD_diff'].iloc[-2])
+        latest_macd_diff = float(df['MACD_diff'].iloc[-1])
+        
         # 買入條件檢查
-        c_macd_gold = (prev['MACD_diff'] < 0 and latest['MACD_diff'] > 0) # MACD金叉
+        c_macd_gold = (prev_macd_diff < 0 and latest_macd_diff > 0) # MACD金叉
         c_macd_below_0 = (latest_macd_line < 0) # 0軸下方
         c_rsi_above_50 = (latest_rsi > 50) # RSI > 50
         c_above_20ma = (current_price > latest_ma20) # 站上20MA
@@ -82,7 +82,7 @@ try:
         
         # 賣出條件檢查
         c_rsi_overbought = (latest_rsi >= 75) # RSI進入超買區
-        c_macd_dead = (prev['MACD_diff'] > 0 and latest['MACD_diff'] < 0) # MACD高位死叉
+        c_macd_dead = (prev_macd_diff > 0 and latest_macd_diff < 0) # MACD高位死叉
         c_rsi_drop_60 = (latest_rsi < 60)
         
         # ----------------- 頂部數據看板 -----------------
@@ -92,7 +92,6 @@ try:
         with col2:
             st.metric("當前 RSI ({})".format(rsi_period), f"{latest_rsi:.2f}")
         with col3:
-            # 💡【已修正】這裡原本打錯成 c_rsi_above_5，現已補上 0 修正為 c_rsi_above_50
             if c_above_20ma and c_macd_gold and c_rsi_above_50:
                 st.success("🔥 策略建議：強勢進攻點（符合最強買入訊號）")
             elif c_macd_gold and c_macd_below_0:
@@ -132,7 +131,6 @@ try:
             st.caption("大於 5 日均量確認")
             
         with grid5:
-            # 逃命預警
             if c_rsi_overbought or (c_macd_dead and c_rsi_drop_60):
                 status = "🔴 警報觸發"
             else:
@@ -145,7 +143,6 @@ try:
         # ----------------- 圖像化區塊二：專業多圖連動圖表 -----------------
         st.subheader("📈 股價、量能與指標三合一主圖連動")
         
-        # 畫出高質量的多合一圖表
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 10), sharex=True, gridspec_kw={'height_ratios': [2, 1, 1]})
         
         # 主圖：股價 + 20MA
@@ -155,7 +152,7 @@ try:
         ax1.legend(loc='upper left')
         ax1.grid(True, alpha=0.3)
         
-        # 副圖一：RSI + 50分界線 + 75超買線
+        # 副圖一：RSI
         ax2.plot(df.index[-120:], df['RSI'].iloc[-120:], color='purple', label='RSI ({})'.format(rsi_period))
         ax2.axhline(50, color='blue', linestyle='--', alpha=0.5, label='Bull/Bear (50)')
         ax2.axhline(75, color='red', linestyle=':', alpha=0.6, label='Overbought (75)')
@@ -163,12 +160,14 @@ try:
         ax2.legend(loc='upper left')
         ax2.grid(True, alpha=0.3)
         
-        # 副圖二：MACD 柱狀體與快慢線
+        # 副圖二：MACD 
         ax3.plot(df.index[-120:], df['MACD_line'].iloc[-120:], color='black', label='MACD')
         ax3.plot(df.index[-120:], df['MACD_signal'].iloc[-120:], color='blue', linestyle='--', label='Signal')
-        # 柱狀體翻紅翻綠
-        colors = ['red' if float(x) >= 0 else 'green' for x in df['MACD_diff'].iloc[-120:]]
-        ax3.bar(df.index[-120:], df['MACD_diff'].iloc[-120:], color=colors, label='Histogram', alpha=0.6)
+        
+        # 轉換數值以確保畫圖穩定
+        diff_values = df['MACD_diff'].iloc[-120:].values.flatten()
+        colors = ['red' if float(x) >= 0 else 'green' for x in diff_values]
+        ax3.bar(df.index[-120:], diff_values, color=colors, label='Histogram', alpha=0.6)
         ax3.axhline(0, color='gray', linestyle='-', alpha=0.5)
         ax3.set_ylabel('MACD')
         ax3.legend(loc='upper left')
