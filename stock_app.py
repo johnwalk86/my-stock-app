@@ -159,4 +159,23 @@ try:
         ax3.plot(df.index[-120:], df['MACD_signal'][-120:], color='blue', linestyle='--', label='Signal')
         # 柱狀體翻紅翻綠
         colors = ['red' if x >= 0 else 'green' for x in df['MACD_diff'][-120:]]
-        ax3.bar(df.index[-120:], df['MACD_diff'][-120:], color=colors, label='Histogram', alpha=0.6
+        ax3.bar(df.index[-120:], df['MACD_diff'][-120:], color=colors, label='Histogram', alpha=0.6)
+        ax3.axhline(0, color='gray', linestyle='-', alpha=0.5)
+        ax3.set_ylabel('MACD')
+        ax3.legend(loc='upper left')
+        ax3.grid(True, alpha=0.3)
+        
+        st.pyplot(fig)
+        
+        # ----------------- 圖像化區塊三：快速對照表 -----------------
+        st.markdown("### 📊 實戰策略核心快速對照表")
+        st.table(pd.DataFrame({
+            "情境": ["築底階段", "強勢進攻", "轉弱警訊", "崩跌風險"],
+            "MACD 狀態": ["0軸下金叉，柱狀體翻紅", "0軸上運行，開口向上", "高位死叉，柱狀體翻綠", "0軸下死叉運行"],
+            "RSI 狀態": ["低點抬高（底背離）", "穩定在 50 - 70 之間突破", "跌破 50 或 頂背離", "低於 30 但持續鈍化"],
+            "量能與均線配合": ["成交量開始溫和放大", "股價站穩 20MA + 爆量", "跌破 20MA 月線", "均線下彎空頭排列"],
+            "核心建議動作": ["分批建倉佈局", "重倉持股待漲", "果斷減碼撤退", "觀望，切勿盲目接刀"]
+        }))
+
+except Exception as e:
+    st.error(f"運行出錯，原因：{e}")
