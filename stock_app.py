@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 # 🚀 網頁標題與設定
 st.set_page_config(page_title="AI 智能股票交易分析軟體", layout="wide")
-st.title("📈 AI 智能股票交易分析軟體 (模擬版)")
+st.title("📈 棟未條 AI智能股票交易分析軟體")
 st.subheader("設定您的自選股與交易策略，讓系統自動分析買賣點！")
 
 # ----------------- 側邊欄設定 -----------------
