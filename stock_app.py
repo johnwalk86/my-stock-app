@@ -39,7 +39,7 @@ try:
     if df.empty:
         st.error("❌ 找不到該股票數據，請檢查代碼是否正確。")
     else:
-        # 🔥【關鍵修正核心】將 Yahoo Finance 的多維結構壓平成一維
+        # 🔥【這是關鍵】把 Yahoo Finance 雙層二維結構壓平成一維串流
         close_series = df['Close'].squeeze()
         volume_series = df['Volume'].squeeze()
         
@@ -47,7 +47,7 @@ try:
         # 1. 20MA 均線
         df['20MA'] = close_series.rolling(window=20).mean()
         
-        # 2. RSI (14)
+        # 2. RSI 
         df['RSI'] = ta.momentum.rsi(close_series, window=rsi_period)
         
         # 3. MACD (12, 26, 9)
@@ -167,7 +167,7 @@ try:
         ax3.plot(df.index[-120:], df['MACD_line'].iloc[-120:], color='black', label='MACD')
         ax3.plot(df.index[-120:], df['MACD_signal'].iloc[-120:], color='blue', linestyle='--', label='Signal')
         # 柱狀體翻紅翻綠
-        colors = ['red' if x >= 0 else 'green' for x in df['MACD_diff'].iloc[-120:]]
+        colors = ['red' if float(x) >= 0 else 'green' for x in df['MACD_diff'].iloc[-120:]]
         ax3.bar(df.index[-120:], df['MACD_diff'].iloc[-120:], color=colors, label='Histogram', alpha=0.6)
         ax3.axhline(0, color='gray', linestyle='-', alpha=0.5)
         ax3.set_ylabel('MACD')
