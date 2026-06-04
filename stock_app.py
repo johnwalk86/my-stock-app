@@ -4,8 +4,6 @@ import pandas as pd
 import ta
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-import requests
-import re
 
 # 🚀 網頁基本設定
 st.set_page_config(page_title="AI 智能股票分析", layout="wide")
@@ -21,17 +19,14 @@ ticker = f"{number}{tail}"
 show_days = {"1個月": 22, "3個月": 66, "6個月": 132}[st.sidebar.radio("📅 顯示區間", ["1個月", "3個月", "6個月"], index=1)]
 rsi_p = st.sidebar.slider("RSI 天數", 9, 14, 14)
 
-# 🔍 抓取中文名稱爬蟲
+# 🔍 抓取股票名稱 (改用內建資料庫，避開 Yahoo 擋外國 IP)
 @st.cache_data
-def get_stock_name(stock_id):
+def get_stock_name(full_ticker):
     try:
-        url = f"https://tw.stock.yahoo.com/quote/{stock_id}"
-        h = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(url, headers=h, timeout=5)
-        match = re.search(r'<title>(.*?)\s*\(\d+\)', res.text)
-        return match.group(1) if match else "Unknown"
+        info = yf.Ticker(full_ticker).info
+        return info.get('shortName', '指定個股')
     except:
-        return "Unknown"
+        return "指定個股"
 
 # 🔍 數據抓取
 @st.cache_data
@@ -39,8 +34,8 @@ def load_data(t):
     return yf.download(t, period="1y")
 
 try:
-    # 抓取中文名與歷史數據
-    stock_name = get_stock_name(number)
+    # 抓取名稱與歷史數據
+    stock_name = get_stock_name(ticker)
     raw_df = load_data(ticker)
     
     if raw_df.empty: 
@@ -88,7 +83,7 @@ try:
         cur_p = df['Close'].iloc[-1]
         chg = cur_p - df['Close'].iloc[-2]
         
-        # 中文名稱顯示在這裡
+        # 完美顯示股票名稱
         st.markdown(f"### 📌 {stock_name} ({ticker}) 即時戰況")
         
         c1, c2, c3 = st.columns(3)
@@ -120,7 +115,6 @@ try:
         ax1.scatter(plot_df.index, plot_df['Buy'], color='crimson', marker='^', s=150, zorder=5, label='Buy')
         ax1.scatter(plot_df.index, plot_df['Sell'], color='darkgreen', marker='v', s=150, zorder=5, label='Sell')
         
-        # 圖表標題改回純英文消滅豆腐塊
         ax1.set_title(f"[{ticker}] Technical Chart", fontsize=14)
         ax1.legend(loc='upper left')
         ax1.grid(True, alpha=0.3)
